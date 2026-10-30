@@ -10,5 +10,4 @@ El proyecto incluye funcionalidades para registrar usuarios, consultar productos
 
 ## Objetivo de la práctica
 
-Aprender a utilizar Git y GitHub para gestionar el desarrollo de un proyecto de software mediante control de versiones, commits y ramas de trabajo.# Tienda-Online-Python
-Aplicación de tienda online desarrollada en Python para la gestión de usuarios, productos y pedidos. Proyecto de control de versiones con Git y GitHub.
+Aprender a utilizar Git y GitHub para gestionar el desarrollo de un proyecto de software mediante control de versiones, commits y ramas de trabajo.
