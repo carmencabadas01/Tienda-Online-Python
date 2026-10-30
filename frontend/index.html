@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tienda Online</title>
+<style>
+    body { font-family: Arial, sans-serif; max-width: 960px; margin: 0 auto; padding: 20px; background: #f3f4f6; color: #222; }
+    h1 { margin-bottom: 4px; }
+    h2 { margin-top: 0; font-size: 1.15em; }
+    section { background: #fff; padding: 18px 20px; margin-bottom: 18px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    label { display: inline-block; margin: 4px 8px 4px 0; font-size: .9em; }
+    input, select, button { padding: 8px 10px; margin: 4px 4px 4px 0; font-size: .95em; }
+    input, select { border: 1px solid #bbb; border-radius: 4px; }
+    button { background: #2878c8; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #1f62a3; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; font-size: .9em; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align: left; }
+    th { background: #eef2f7; }
+    td.id { font-family: monospace; font-size: .8em; word-break: break-all; }
+    .mensaje { margin-top: 8px; padding: 8px 10px; border-radius: 4px; display: none; }
+    .ok { background: #e6f4ea; color: #1e6b34; display: block; }
+    .error { background: #fdecea; color: #a12622; display: block; }
+    .config { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+    .config input { flex: 1; min-width: 220px; }
+    .oculto { display: none; }
+</style>
+</head>
+<body>
+
+<h1>Tienda Online</h1>
+<p>Frontend que consume la API REST mediante peticiones HTTP (<code>fetch</code>).</p>
+
+<section>
+    <h2>Servidor de la API</h2>
+    <div class="config">
+        <label for="baseUrl">Dirección base:</label>
+        <input id="baseUrl" value="http://localhost:8000">
+        <button onclick="guardarBaseUrl()">Aplicar y recargar datos</button>
+    </div>
+    <div class="mensaje" id="msgConfig"></div>
+</section>
+
+<section>
+    <h2>Productos disponibles</h2>
+    <button onclick="listarProductos()">Actualizar productos</button>
+    <div id="productos"></div>
+</section>
+
+<section>
+    <h2>Añadir producto</h2>
+    <label>Tipo
+        <select id="tipoProducto" onchange="cambiarTipo()">
+            <option value="general">General</option>
+            <option value="electronico">Electrónico</option>
+            <option value="ropa">Ropa</option>
+        </select>
+    </label>
+    <input id="nombreProducto" placeholder="Nombre">
+    <input id="precioProducto" type="number" min="0" step="0.01" placeholder="Precio">
+    <input id="stockProducto" type="number" min="0" step="1" placeholder="Stock">
+    <span id="camposElectronico" class="oculto">
+        <input id="garantiaProducto" type="number" min="1" step="1" placeholder="Meses de garantía">
+    </span>
+    <span id="camposRopa" class="oculto">
+        <input id="tallaProducto" placeholder="Talla">
+        <input id="colorProducto" placeholder="Color">
+    </span>
+    <button onclick="crearProducto()">Crear producto</button>
+    <div class="mensaje" id="msgProducto"></div>
+</section>
+
+<section>
+    <h2>Usuarios registrados</h2>
+    <button onclick="listarUsuarios()">Actualizar usuarios</button>
+    <div id="usuarios"></div>
+    <p style="font-size:.85em;color:#666">Los usuarios se crean desde <code>/docs</code> o con <code>cliente.py</code>.</p>
+</section>
+
+<section>
+    <h2>Crear pedido</h2>
+    <label>Cliente <select id="clienteId"></select></label>
+    <label>Producto <select id="productoId"></select></label>
+    <label>Cantidad <input id="cantidad" type="number" min="1" step="1" value="1" style="width:80px"></label>
+    <button onclick="crearPedido()">Realizar pedido</button>
+    <div class="mensaje" id="msgPedido"></div>
+</section>
+
+<section>
+    <h2>Consultar pedidos de un usuario</h2>
+    <label>Usuario <select id="usuarioId"></select></label>
+    <button onclick="listarPedidos()">Ver pedidos</button>
+    <div class="mensaje" id="msgPedidos"></div>
+    <div id="pedidos"></div>
+</section>
+
+<script>
+// ---------------------------------------------------------------
+// CONFIGURACIÓN: dirección base de la API
+// Se puede cambiar desde la propia página (se guarda en el navegador).
+// ---------------------------------------------------------------
+let BASE_URL = "http://localhost:8000";
+try {
+    BASE_URL = localStorage.getItem("baseUrl") || BASE_URL;
+} catch (e) { /* sin almacenamiento: se usa el valor por defecto */ }
+document.getElementById("baseUrl").value = BASE_URL;
+
+function guardarBaseUrl() {
+    BASE_URL = document.getElementById("baseUrl").value.trim().replace(/\/+$/, "");
+    try { localStorage.setItem("baseUrl", BASE_URL); } catch (e) {}
+    aviso("msgConfig", "Servidor configurado: " + BASE_URL, true);
+    cargarTodo();
+}
+
+// ---------------------------------------------------------------
+// FUNCIÓN CENTRAL: todas las peticiones HTTP a la API pasan por aquí.
+//  - ruta:     endpoint (por ejemplo "/productos")
+//  - opciones: método, cabeceras y cuerpo JSON para fetch
+// Devuelve { ok, estado, datos } y procesa los errores de la API
+// (campo "detail" del JSON) y los de red (servidor apagado, etc.).
+// ---------------------------------------------------------------
+async function peticion(ruta, opciones = {}) {
+    try {
+        const respuesta = await fetch(BASE_URL + ruta, opciones);
+        let datos = null;
+        if (respuesta.status !== 204) {
+            datos = await respuesta.json();
+        }
+        if (!respuesta.ok) {
+            return { ok: false, estado: respuesta.status, error: textoError(datos) };
+        }
+        return { ok: true, estado: respuesta.status, datos: datos };
+    } catch (error) {
+        return { ok: false, estado: 0,
+                 error: "No se pudo conectar con la API en " + BASE_URL };
+    }
+}
+
+// FastAPI devuelve "detail" como texto (404, 409...) o como lista (422).
+function textoError(datos) {
+    if (!datos || !datos.detail) return "Error desconocido";
+    if (typeof datos.detail === "string") return datos.detail;
+    return datos.detail.map(d => (d.loc ? d.loc.slice(1).join(".") + ": " : "") + d.msg).join(" | ");
+}
+
+// ---------------------------------------------------------------
+// Utilidades de interfaz (se construye el DOM con textContent para
+// que los datos nunca se interpreten como HTML)
+// ---------------------------------------------------------------
+function aviso(id, texto, ok) {
+    const el = document.getElementById(id);
+    el.textContent = texto;
+    el.className = "mensaje " + (ok ? "ok" : "error");
+}
+
+function limpiarAviso(id) {
+    const el = document.getElementById(id);
+    el.textContent = "";
+    el.className = "mensaje";
+}
+
+function tabla(idContenedor, columnas, filas) {
+    const cont = document.getElementById(idContenedor);
+    cont.textContent = "";
+    if (filas.length === 0) {
+        cont.textContent = "No hay datos.";
+        return;
+    }
+    const t = document.createElement("table");
+    const cabecera = t.createTHead().insertRow();
+    columnas.forEach(c => {
+        const th = document.createElement("th");
+        th.textContent = c.titulo;
+        cabecera.appendChild(th);
+    });
+    const cuerpo = t.createTBody();
+    filas.forEach(fila => {
+        const tr = cuerpo.insertRow();
+        columnas.forEach(c => {
+            const td = tr.insertCell();
+            td.textContent = c.valor(fila);
+            if (c.id) td.className = "id";
+        });
+    });
+    cont.appendChild(t);
+}
+
+function rellenarSelect(id, elementos, etiqueta) {
+    const select = document.getElementById(id);
+    const anterior = select.value;
+    select.textContent = "";
+    elementos.forEach(e => {
+        const op = document.createElement("option");
+        op.value = e.id;
+        op.textContent = etiqueta(e);
+        select.appendChild(op);
+    });
+    if (elementos.some(e => e.id === anterior)) select.value = anterior;
+}
+
+const euros = n => Number(n).toFixed(2) + " €";
+
+// ---------------------------------------------------------------
+// PRODUCTOS      GET /productos        POST /productos
+// ---------------------------------------------------------------
+async function listarProductos() {
+    const r = await peticion("/productos");           // GET /productos
+    if (!r.ok) { document.getElementById("productos").textContent = r.error; return; }
+    tabla("productos", [
+        { titulo: "ID", valor: p => p.id, id: true },
+        { titulo: "Tipo", valor: p => p.tipo },
+        { titulo: "Nombre", valor: p => p.nombre },
+        { titulo: "Precio", valor: p => euros(p.precio) },
+        { titulo: "Stock", valor: p => p.stock },
+        { titulo: "Detalles", valor: p =>
+            p.tipo === "electronico" ? p.meses_garantia + " meses de garantía" :
+            p.tipo === "ropa" ? "Talla " + p.talla + ", " + p.color : "" }
+    ], r.datos);
+    rellenarSelect("productoId", r.datos,
+        p => p.nombre + " (" + euros(p.precio) + ", stock " + p.stock + ")");
+}
+
+function cambiarTipo() {
+    const tipo = document.getElementById("tipoProducto").value;
+    document.getElementById("camposElectronico").className = tipo === "electronico" ? "" : "oculto";
+    document.getElementById("camposRopa").className = tipo === "ropa" ? "" : "oculto";
+}
+
+async function crearProducto() {
+    const tipo = document.getElementById("tipoProducto").value;
+    const cuerpo = {
+        tipo: tipo,
+        nombre: document.getElementById("nombreProducto").value.trim(),
+        precio: Number(document.getElementById("precioProducto").value),
+        stock: Number(document.getElementById("stockProducto").value)
+    };
+    if (tipo === "electronico") {
+        cuerpo.meses_garantia = Number(document.getElementById("garantiaProducto").value) || null;
+    }
+    if (tipo === "ropa") {
+        cuerpo.talla = document.getElementById("tallaProducto").value.trim();
+        cuerpo.color = document.getElementById("colorProducto").value.trim();
+    }
+
+    const r = await peticion("/productos", {          // POST /productos
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cuerpo)
+    });
+
+    if (r.ok) {
+        aviso("msgProducto", "Producto creado: " + r.datos.nombre + " (código " + r.estado + ")", true);
+        listarProductos();
+    } else {
+        aviso("msgProducto", "Error " + r.estado + ": " + r.error, false);
+    }
+}
+
+// ---------------------------------------------------------------
+// USUARIOS       GET /usuarios
+// ---------------------------------------------------------------
+async function listarUsuarios() {
+    const r = await peticion("/usuarios");            // GET /usuarios
+    if (!r.ok) { document.getElementById("usuarios").textContent = r.error; return; }
+    tabla("usuarios", [
+        { titulo: "ID", valor: u => u.id, id: true },
+        { titulo: "Nombre", valor: u => u.nombre },
+        { titulo: "Email", valor: u => u.email },
+        { titulo: "Rol", valor: u => u.es_admin ? "Administrador" : "Cliente" }
+    ], r.datos);
+    const etiqueta = u => u.nombre + " (" + u.email + ")";
+    rellenarSelect("clienteId", r.datos, etiqueta);
+    rellenarSelect("usuarioId", r.datos, etiqueta);
+}
+
+// ---------------------------------------------------------------
+// PEDIDOS        POST /pedidos        GET /usuarios/{id}/pedidos
+// ---------------------------------------------------------------
+async function crearPedido() {
+    const r = await peticion("/pedidos", {            // POST /pedidos
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            cliente_id: document.getElementById("clienteId").value,
+            items: [{
+                producto_id: document.getElementById("productoId").value,
+                cantidad: Number(document.getElementById("cantidad").value)
+            }]
+        })
+    });
+
+    if (r.ok) {
+        aviso("msgPedido", "Pedido creado. Total: " + euros(r.datos.total) + " (código " + r.estado + ")", true);
+        listarProductos();   // el stock ha cambiado
+    } else {
+        aviso("msgPedido", "Error " + r.estado + ": " + r.error, false);
+    }
+}
+
+async function listarPedidos() {
+    const id = document.getElementById("usuarioId").value;
+    limpiarAviso("msgPedidos");
+    if (!id) { aviso("msgPedidos", "No hay usuarios: créalos primero.", false); return; }
+
+    const r = await peticion("/usuarios/" + encodeURIComponent(id) + "/pedidos");  // GET /usuarios/{id}/pedidos
+    if (!r.ok) { aviso("msgPedidos", "Error " + r.estado + ": " + r.error, false); return; }
+
+    tabla("pedidos", [
+        { titulo: "Pedido", valor: p => p.id, id: true },
+        { titulo: "Fecha", valor: p => new Date(p.fecha).toLocaleString("es-ES") },
+        { titulo: "Productos", valor: p => p.items.map(i => i.cantidad + " x " + i.nombre).join(", ") },
+        { titulo: "Total", valor: p => euros(p.total) }
+    ], r.datos);
+}
+
+// ---------------------------------------------------------------
+function cargarTodo() {
+    listarProductos();
+    listarUsuarios();
+}
+cambiarTipo();
+cargarTodo();
+</script>
+
+</body>
+</html>
