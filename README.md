@@ -12,8 +12,34 @@ El proyecto incluye funcionalidades para registrar usuarios, consultar productos
 
 Aprender a utilizar Git y GitHub para gestionar el desarrollo de un proyecto de software mediante control de versiones, commits y ramas de trabajo.
 
+- **Práctica 3.1:** control de versiones con Git y GitHub (ramas `feature/`, commits y Pull Requests).
+- **Práctica 3.2:** contenerización de la aplicación con Docker y publicación de la imagen en Docker Hub.
+
+## Estructura del proyecto
+
+```
+src/            Código fuente de la API (FastAPI)
+  main.py       Punto de entrada de la aplicación
+  models/       Modelos de datos (Usuario, Producto, Pedido)
+  schemas/      Esquemas de validación
+  Services/     Lógica de negocio (Tienda_service.py)
+  cliente/      Código del cliente (cliente.py)
+frontend/       Interfaz web (index.html)
+Dockerfile      Definición de la imagen
+.dockerignore   Archivos excluidos de la imagen
+requirements.txt  Dependencias con versiones fijadas
+```
 
 ## Docker
+
+### Descargar la imagen desde Docker Hub
+
+La imagen está publicada en Docker Hub: https://hub.docker.com/r/carmencabadas/tienda-online
+
+```bash
+docker pull carmencabadas/tienda-online:1.0
+docker run -p 8000:8000 carmencabadas/tienda-online:1.0
+```
 
 ### Construir la imagen
 
